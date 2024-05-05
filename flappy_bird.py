@@ -19,6 +19,7 @@ scroll_speed = 2
 flying = False
 game_over = False
 stop_scroll = True  # Set stop_scroll to True initially
+score = 0  # Initialize score variable
 
 # Set up directories
 current_dir = os.path.dirname(__file__)
@@ -28,6 +29,15 @@ img_dir = os.path.join(current_dir, 'img')
 bg = pygame.image.load(os.path.join(img_dir, 'bg.png')).convert_alpha()
 ground_img = pygame.image.load(os.path.join(img_dir, 'ground.png')).convert_alpha()
 pipe_img = pygame.image.load(os.path.join(img_dir, 'pipe.png')).convert_alpha()
+restart_img = pygame.image.load(os.path.join(img_dir, 'restart.png')).convert_alpha()
+
+# Resize the restart image
+desired_restart_width = 150
+desired_restart_height = 75
+restart_img = pygame.transform.scale(restart_img, (desired_restart_width, desired_restart_height))
+
+# Define font for "Click to Start" text
+font = pygame.font.Font(None, 36)
 
 class Bird(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -51,7 +61,7 @@ class Bird(pygame.sprite.Sprite):
         self.shake_offset = 5  # Shake offset amount
 
     def update(self):
-        global flying, game_over, ground_scroll, stop_scroll
+        global flying, game_over, ground_scroll, stop_scroll, score
         if flying:
             # gravity
             self.vel += 0.5
@@ -109,13 +119,26 @@ class Pipe(pygame.sprite.Sprite):
         else:
             self.image = pygame.transform.flip(self.image, False, True)
             self.rect.topleft = (x, y)  # Adjusting the position for the bottom pipe
+        self.passed = False  # Flag to track if bird passed this pipe
+        self.pair_passed = False  # Flag to track if bird passed the pair of pipes
 
     def update(self):
-        global scroll_speed, stop_scroll
+        global scroll_speed, stop_scroll, score
         if not stop_scroll:  # Only update position if scrolling is not stopped
             self.rect.x -= scroll_speed
         if self.rect.right < 0:
             self.kill()
+        # Check if bird passes the pipe
+        if not self.passed and self.rect.right < flappy.rect.left:
+            self.passed = True
+        # Check if bird passed both pipes in the pair
+        if self.passed and not self.pair_passed:
+            # Check if the bird is between the pipes
+            if self.rect.right < flappy.rect.left:
+                self.pair_passed = True
+                # Increment score only if both pipes in the pair have been passed
+                if self.pair_passed:
+                    score += 1
 
 bird_group = pygame.sprite.Group()
 flappy = Bird(100, int(screen_height / 2))
@@ -141,6 +164,18 @@ def generate_pipes():
         pipe_group.add(bottom_pipe)
         pipe_group.add(top_pipe)
 
+def restart_game():
+    global game_over, flying, stop_scroll, score
+    flappy.rect.y = int(screen_height / 2)
+    flappy.vel = 0
+    game_over = False
+    flying = False
+    stop_scroll = True
+    score = 0
+    pipe_group.empty()
+    # Add the bird back to the bird group
+    bird_group.add(flappy)
+
 run = True
 while run:
     clock.tick(fps)
@@ -162,6 +197,20 @@ while run:
         elif event.type == pygame.MOUSEBUTTONDOWN and not flying and not game_over:
             flying = True
             stop_scroll = False  # Set stop_scroll to False when player clicks to fly
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # Check if the restart button is clicked
+            if game_over:
+                restart_rect = restart_img.get_rect(center=(screen_width // 2, screen_height // 2))
+                if restart_rect.collidepoint(event.pos):
+                    # Restart the game if the restart button is clicked
+                    restart_game()
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                if not game_over:
+                    flappy.vel = -10  # Set velocity upwards when space is pressed
+                else:
+                    # Restart the game if space is pressed and the game is over
+                    restart_game()
 
     if not stop_scroll:  # Only generate and scroll pipes if stop_scroll is False
         # generate and scroll pipes
@@ -179,25 +228,6 @@ while run:
             bird_group.remove(flappy)
             pipe_group.empty()
 
-    # Handle events and update the display
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            run = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                if not game_over:
-                    flappy.vel = -10  # Set velocity upwards when space is pressed
-                else:
-                    # Restart the game if space is pressed and the game is over
-                    flappy.rect.y = int(screen_height / 2)
-                    flappy.vel = 0
-                    game_over = False
-                    ground_scroll = 0
-                    pipe_group.empty()
-                    stop_scroll = False  # Reset scroll flag
-        elif event.type == pygame.MOUSEBUTTONDOWN and not flying and not game_over:
-            flying = True
-
     if not game_over:
         # check if bird has hit the ground
         if flappy.rect.bottom > screen_height:
@@ -209,6 +239,25 @@ while run:
         ground_scroll -= scroll_speed
         if ground_scroll <= -ground_img.get_width():
             ground_scroll = 0
+
+    # Display the score on the screen
+    score_text = font.render(f'Score: {score}', True, (255, 255, 255))
+    screen.blit(score_text, (10, 10))
+
+    # Display the "Game Over" message and "Restart" button
+    if game_over:
+        game_over_font = pygame.font.Font(None, 64)
+        game_over_text = game_over_font.render("Game Over", True, (255, 255, 255))
+        screen.blit(game_over_text, (screen_width // 2 - game_over_text.get_width() // 2, screen_height // 3))
+
+        restart_rect = restart_img.get_rect(center=(screen_width // 2, screen_height // 2))
+        screen.blit(restart_img, restart_rect)
+
+    # Display "Click to Start" text in the middle
+    if not flying and not game_over:
+        click_to_start_text = font.render("Click to Start:3", True, (255, 255, 255))
+        text_rect = click_to_start_text.get_rect(center=(screen_width // 2, screen_height // 2))
+        screen.blit(click_to_start_text, text_rect)
 
     pygame.display.update()
 
